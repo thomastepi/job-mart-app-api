@@ -1,58 +1,95 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const User = require("../models/userModel");
-const authenticateToken = require("../middleware/authtoken");
 
 const saltRounds = 10;
 
-
 async function register(req, res) {
-    const { name, email, password } = req.body;
-    const user = await User
-        .findOne({ email })
-        .catch((err) => {
-            console.error("Error: ", err);
-            res.status(500).send("Internal server error");
+  const { name, email, password } = req.body;
+  const user = await User.findOne({ email }).catch((err) => {
+    console.error("Error: ", err);
+    res.status(500).send("Internal server error");
+  });
+  if (user) {
+    res.status(400).send("User already exists");
+  } else {
+    const accessToken = jwt.sign({ email }, process.env.ACCESS_TOKEN);
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const newUser = new User({ name, email, password: hashedPassword });
+    newUser
+      .save()
+      .then((user) => {
+        res.status(201).send({
+          name: user.name,
+          email: user.email,
+          lastName: user.lastName,
+          location: user.location,
+          accessToken,
         });
-    if (user) {
-        res.status(400).send("User already exists");
-    } else {
-        const hashedPassword = await bcrypt.hash(password, saltRounds);
-        const newUser = new User({ name, email, password: hashedPassword });
-        newUser
-            .save()
-            .then((user) => {
-                res.status(201).send(user);
-            })
-            .catch((err) => {
-                console.error("Error: ", err);
-                res.status(500).send("Internal server error");
-            });
-    }
+      })
+      .catch((err) => {
+        console.error("Error: ", err);
+        res.status(500).send("Internal server error");
+      });
+  }
 }
 
 async function login(req, res) {
-    const { email, password } = req.body;
-    const user = await User
-        .findOne({ email })
-        .catch((err) => {
-            console.error("Error: ", err);
-            res.status(500).send("Internal server error");
-        });
-    if (!user) {
-        res.status(404).send("User not found");
+  const { email, password } = req.body;
+  const user = await User.findOne({ email }).catch((err) => {
+    console.error("Error: ", err);
+    res.status(500).send("Internal server error");
+  });
+  if (!user) {
+    res.status(404).send("User not found");
+  } else {
+    const match = await bcrypt.compare(password, user.password);
+    if (match) {
+      const accessToken = jwt.sign(
+        { email: user.email },
+        process.env.ACCESS_TOKEN
+      );
+      res.status(200).send({
+        name: user.name,
+        email: user.email,
+        lastName: user.lastName,
+        location: user.location,
+        accessToken,
+      });
     } else {
-        const match = await bcrypt.compare(password, user.password);
-        if (match) {
-            const accessToken = jwt.sign({ email: user.email }, process.env.ACCESS_TOKEN);
-            res.status(200).send({ accessToken });
-        } else {
-            res.status(401).send("Invalid password");
-        }
+      res.status(401).send("Invalid password");
     }
+  }
+}
+
+async function updateUser(req, res) {
+  const { name, email, lastName, location } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).send("Email must be unique");
+    }
+    user.name = name;
+    user.email = email;
+    user.lastName = lastName;
+    user.location = location;
+
+    const updatedUser = await user.save();
+
+    res.status(200).send({
+      name: updatedUser.name,
+      email: updatedUser.email,
+      lastName: updatedUser.lastName,
+      location: updatedUser.location,
+    });
+  } catch (err) {
+    console.error("Error: ", err);
+    return res.status(500).send("Internal server error");
+  }
 }
 
 module.exports = {
-    register,
-    login
+  register,
+  login,
+  updateUser,
 };
