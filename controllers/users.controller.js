@@ -45,8 +45,9 @@ async function login(req, res) {
   } else {
     const match = await bcrypt.compare(password, user.password);
     if (match) {
+      const role = user.email === "guest@guest.com" ? "guest" : "user";
       const accessToken = jwt.sign(
-        { email: user.email },
+        { email: user.email, role: role},
         process.env.ACCESS_TOKEN
       );
       res.status(200).send({
